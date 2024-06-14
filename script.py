@@ -32,12 +32,12 @@ def analyze(dataset):
 
     df["state"] = df["state"].map(lambda x: x if x != New else Learning)
 
-    recall_costs = np.zeros(3)
+    button_costs = np.zeros(3)
     recall_card_revlog = recall_card_revlog[
         (recall_card_revlog["duration"] > 0) & (df["duration"] < 1200000)
     ]
-    recall_costs_agg = recall_card_revlog.groupby(by="rating")["duration"].median()
-    recall_costs[recall_costs_agg.index - 2] = recall_costs_agg / 1000
+    recall_costs = recall_card_revlog.groupby(by="rating")["duration"].median()
+    button_costs[recall_costs.index - 2] = recall_costs / 1000
 
     state_sequence = np.array(
         df[(df["duration"] > 0) & (df["duration"] < 1200000)]["state"]
@@ -74,15 +74,16 @@ def analyze(dataset):
         last_state = state
 
     recall_cost = round(np.median(state_durations[Review]) / 1000, 1)
-    forget_cost = round(np.median(state_durations[Relearning]) / 1000 + recall_cost, 1)
+    relearn_cost = round(np.median(state_durations[Relearning]) / 1000 + recall_cost, 1)
     result = {
-        "user_id": int(dataset.stem),
+        "user": int(dataset.stem),
         "size": df.shape[0],
         "first_rating_prob": first_rating_prob.round(4).tolist(),
         "review_rating_prob": review_rating_prob.round(4).tolist(),
-        "recall_costs": recall_costs.round(4).tolist(),
-        "forget_cost": forget_cost,
+        "button_costs": button_costs.round(4).tolist(),
         "learn_cost": learn_cost,
+        "recall_cost": recall_cost,
+        "relearn_cost": relearn_cost,
     }
     return result
 
@@ -91,11 +92,13 @@ if __name__ == "__main__":
     result_file = Path(f"button_usage.jsonl")
     if result_file.exists():
         data = list(map(lambda x: json.loads(x), open(result_file).readlines()))
-        data.sort(key=lambda x: x["user_id"])
+        data.sort(key=lambda x: x["user"])
         with result_file.open("w", encoding="utf-8") as jsonl_file:
             for json_data in data:
                 jsonl_file.write(json.dumps(json_data, ensure_ascii=False) + "\n")
-        processed_user = set(map(lambda x: x["user_id"], data))
+        processed_user = set(map(lambda x: x["user"], data))
+    else:
+        processed_user = set()
     for dir in (1, 2):
         datasets = sorted(
             Path(f"../FSRS-Anki-20k/dataset/{dir}").glob("*.csv"),
