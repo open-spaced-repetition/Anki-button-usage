@@ -17,73 +17,78 @@ Relearning = 3
 
 def analyze(dataset):
     df = pd.read_csv(dataset)
+    df["real_days"] = df.groupby("card_id")["delta_t"].cumsum().reset_index(drop=True)
+    df["i"] = df.groupby("card_id").cumcount() + 1
 
-    new_card_revlog = df[(df["state"] == New) & (df["rating"].isin([1, 2, 3, 4]))]
-    first_rating_prob = np.zeros(4)
-    first_rating_prob[new_card_revlog["rating"].value_counts().index - 1] = (
-        new_card_revlog["rating"].value_counts() / new_card_revlog["rating"].count()
+    def rating_counts(x):
+        tmp = x.value_counts().to_dict()
+        first = x.iloc[0]
+        tmp[first] -= 1
+        for i in range(1, 5):
+            if i not in tmp:
+                tmp[i] = 0
+        return tmp
+
+    df = (
+        df[(df["duration"] > 0) & (df["duration"] < 1200000)]
+        .groupby(by=["card_id", "real_days"])
+        .agg(
+            {
+                "state": "first",
+                "rating": ["first", rating_counts],
+                "duration": "sum",
+                "i": "size",
+            }
+        )
+        .reset_index()
     )
-    recall_card_revlog = df[(df["state"] == Review) & (df["rating"].isin([2, 3, 4]))]
-    review_rating_prob = np.zeros(3)
-    review_rating_prob[recall_card_revlog["rating"].value_counts().index - 2] = (
-        recall_card_revlog["rating"].value_counts()
-        / recall_card_revlog["rating"].count()
-    )
-
-    df["state"] = df["state"].map(lambda x: x if x != New else Learning)
-
-    button_costs = np.zeros(3)
-    recall_card_revlog = recall_card_revlog[
-        (recall_card_revlog["duration"] > 0) & (df["duration"] < 1200000)
+    df.columns = [
+        "card_id",
+        "real_days",
+        "first_state",
+        "first_rating",
+        "rating_counts",
+        "sum_duration",
+        "review_count",
     ]
-    recall_costs = recall_card_revlog.groupby(by="rating")["duration"].median()
-    button_costs[recall_costs.index - 2] = recall_costs / 1000
+    rating_counts_df = df["rating_counts"].apply(pd.Series).fillna(0).astype(int)
+    df = pd.concat([df.drop("rating_counts", axis=1), rating_counts_df], axis=1)
 
-    state_sequence = np.array(
-        df[(df["duration"] > 0) & (df["duration"] < 1200000)]["state"]
-    )
-    duration_sequence = np.array(
-        df[(df["duration"] > 0) & (df["duration"] < 1200000)]["duration"]
-    )
-    learn_cost = round(
-        df[
-            (df["state"] == Learning)
-            & (df["duration"] > 0)
-            & (df["duration"] < 1200000)
-        ]
-        .groupby("card_id")
-        .agg({"duration": "sum"})["duration"]
+    cost_dict = (
+        df.groupby(by=["first_state", "first_rating"])["sum_duration"]
         .median()
-        / 1000,
-        1,
+        .to_dict()
     )
+    learn_costs = np.array([cost_dict.get((1, i), 0) / 1000 for i in range(1, 5)])
+    review_costs = np.array([cost_dict.get((2, i), 0) / 1000 for i in range(1, 5)])
+    button_usage_dict = (
+        df.groupby(by=["first_state", "first_rating"])["card_id"].count().to_dict()
+    )
+    learn_buttons = np.array([button_usage_dict.get((1, i), 0) for i in range(1, 5)])
+    review_buttons = np.array([button_usage_dict.get((2, i), 0) for i in range(2, 5)])
+    first_rating_prob = learn_buttons / learn_buttons.sum()
+    review_rating_prob = review_buttons / review_buttons.sum()
 
-    state_durations = dict()
-    last_state = state_sequence[0]
-    state_durations[last_state] = [duration_sequence[0]]
-    for i, state in enumerate(state_sequence[1:], start=1):
-        if state not in state_durations:
-            state_durations[state] = []
-        if state == Review:
-            state_durations[state].append(duration_sequence[i])
-        else:
-            if state == last_state:
-                state_durations[state][-1] += duration_sequence[i]
-            else:
-                state_durations[state].append(duration_sequence[i])
-        last_state = state
-
-    recall_cost = round(np.median(state_durations[Review]) / 1000, 1)
-    relearn_cost = round(np.median(state_durations[Relearning]) / 1000 + recall_cost, 1)
+    df2 = df.groupby(by=["first_state", "first_rating"])[[1, 2, 3, 4]].mean().round(2)
+    rating_offset_dict = sum([df2[g] * (g - 3) for g in range(1, 5)]).to_dict()
+    session_len_dict = sum([df2[g] for g in range(1, 5)]).to_dict()
+    first_rating_offset = np.array(
+        [rating_offset_dict.get((1, i), 0) for i in range(1, 5)]
+    )
+    first_session_len = np.array([session_len_dict.get((1, i), 0) for i in range(1, 5)])
+    forget_rating_offset = rating_offset_dict.get((2, 1), 0)
+    forget_session_len = session_len_dict.get((2, 1), 0)
     result = {
         "user": int(dataset.stem),
         "size": df.shape[0],
         "first_rating_prob": first_rating_prob.round(4).tolist(),
         "review_rating_prob": review_rating_prob.round(4).tolist(),
-        "button_costs": button_costs.round(4).tolist(),
-        "learn_cost": learn_cost,
-        "recall_cost": recall_cost,
-        "relearn_cost": relearn_cost,
+        "learn_costs": learn_costs.round(2).tolist(),
+        "review_costs": review_costs.round(2).tolist(),
+        "first_rating_offset": first_rating_offset.round(2).tolist(),
+        "first_session_len": first_session_len.round(2).tolist(),
+        "forget_rating_offset": round(forget_rating_offset, 2),
+        "forget_session_len": round(forget_session_len, 2),
     }
     return result
 
@@ -105,7 +110,7 @@ if __name__ == "__main__":
             key=lambda x: int(x.stem.split(".")[0]),
         )
         with tqdm(total=len(datasets), position=0, leave=True) as pbar:
-            with ProcessPoolExecutor(max_workers=8) as executor:
+            with ProcessPoolExecutor() as executor:
                 futures = [
                     executor.submit(analyze, dataset)
                     for dataset in datasets
