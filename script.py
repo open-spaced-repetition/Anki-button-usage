@@ -17,6 +17,8 @@ Relearning = 3
 
 def analyze(dataset):
     df = pd.read_csv(dataset)
+    df["state"] = df["state"].map(lambda x: x if x != New else Learning)
+    df["delta_t"] = df["delta_t"].map(lambda x: max(0, x))
     df["real_days"] = df.groupby("card_id")["delta_t"].cumsum().reset_index(drop=True)
     df["i"] = df.groupby("card_id").cumcount() + 1
 
