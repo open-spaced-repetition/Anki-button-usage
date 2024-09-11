@@ -31,13 +31,18 @@ def analyze(dataset):
                 tmp[i] = 0
         return tmp
 
+    def next_rating(x):
+        if x.shape[0] > 1:
+            return x.iloc[1]
+        return 0
+
     df = (
         df[(df["duration"] > 0) & (df["duration"] < 1200000)]
         .groupby(by=["card_id", "real_days"])
         .agg(
             {
                 "state": "first",
-                "rating": ["first", rating_counts],
+                "rating": ["first", rating_counts, next_rating],
                 "duration": "sum",
                 "i": "size",
             }
@@ -50,6 +55,7 @@ def analyze(dataset):
         "first_state",
         "first_rating",
         "rating_counts",
+        "next_rating",
         "sum_duration",
         "review_count",
     ]
@@ -80,6 +86,22 @@ def analyze(dataset):
     first_session_len = np.array([session_len_dict.get((1, i), 0) for i in range(1, 5)])
     forget_rating_offset = rating_offset_dict.get((2, 1), 0)
     forget_session_len = session_len_dict.get((2, 1), 0)
+
+    def calculate_recall_rate(group):
+        total = len(group)
+        remembered = len(group[group["next_rating"] > 1])
+        recall_rate = remembered / total if total > 0 else 1
+        return recall_rate
+
+    df3 = (
+        df[df["next_rating"] > 0]
+        .groupby(by=["first_state", "first_rating"])
+        .apply(calculate_recall_rate)
+        .to_dict()
+    )
+    short_term_recall = np.array(
+        [df3.get((1, i), 0) for i in range(1, 4)] + [df3.get((2, 1), 0)]
+    )
     result = {
         "user": int(dataset.stem),
         "size": df.shape[0],
@@ -91,6 +113,7 @@ def analyze(dataset):
         "first_session_len": first_session_len.round(2).tolist(),
         "forget_rating_offset": round(forget_rating_offset, 2),
         "forget_session_len": round(forget_session_len, 2),
+        "short_term_recall": short_term_recall.round(4).tolist(),
     }
     return result
 
