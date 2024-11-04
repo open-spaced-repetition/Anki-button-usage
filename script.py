@@ -4,8 +4,8 @@ import numpy as np
 import json
 from pathlib import Path
 import warnings
-
-from tqdm import tqdm
+import pyarrow.parquet as pq  # type: ignore
+from tqdm import tqdm  # type: ignore
 
 warnings.filterwarnings("ignore")
 
@@ -14,11 +14,15 @@ Learning = 1
 Review = 2
 Relearning = 3
 
+DATA_PATH = "../anki-revlogs-10k/revlogs"
 
-def analyze(dataset):
-    df = pd.read_csv(dataset)
+
+def analyze(user_id):
+    df = pd.read_parquet(DATA_PATH, filters=[("user_id", "=", user_id)])
+    df["review_th"] = range(1, df.shape[0] + 1)
+    df.sort_values(by=["card_id", "review_th"], inplace=True)
     df["state"] = df["state"].map(lambda x: x if x != New else Learning)
-    df["delta_t"] = df["delta_t"].map(lambda x: max(0, x))
+    df["delta_t"] = df["elapsed_days"].map(lambda x: max(0, x))
     df["real_days"] = df.groupby("card_id")["delta_t"].cumsum().reset_index(drop=True)
     df["i"] = df.groupby("card_id").cumcount() + 1
 
@@ -103,7 +107,7 @@ def analyze(dataset):
         [df3.get((1, i), 0) for i in range(1, 4)] + [df3.get((2, 1), 0)]
     )
     result = {
-        "user": int(dataset.stem),
+        "user": user_id,
         "size": df.shape[0],
         "first_rating_prob": first_rating_prob.round(4).tolist(),
         "review_rating_prob": review_rating_prob.round(4).tolist(),
@@ -129,23 +133,26 @@ if __name__ == "__main__":
         processed_user = set(map(lambda x: x["user"], data))
     else:
         processed_user = set()
-    for dir in (1, 2):
-        datasets = sorted(
-            Path(f"../FSRS-Anki-20k/dataset/{dir}").glob("*.csv"),
-            key=lambda x: int(x.stem.split(".")[0]),
-        )
-        with tqdm(total=len(datasets), position=0, leave=True) as pbar:
-            with ProcessPoolExecutor() as executor:
-                futures = [
-                    executor.submit(analyze, dataset)
-                    for dataset in datasets
-                    if int(dataset.stem) not in processed_user
-                ]
-                for future in as_completed(futures):
-                    try:
-                        result = future.result()
-                        with open(result_file, "a") as f:
-                            f.write(json.dumps(result, ensure_ascii=False) + "\n")
-                        pbar.update(1)
-                    except Exception as e:
-                        tqdm.write(str(e))
+
+    dataset = pq.ParquetDataset(DATA_PATH)
+    unprocessed_users = []
+    for user_id in dataset.partitioning.dictionaries[0]:
+        if user_id.as_py() in processed_user:
+            continue
+        unprocessed_users.append(user_id.as_py())
+
+    unprocessed_users.sort()
+
+    with tqdm(total=len(unprocessed_users), position=0, leave=True) as pbar:
+        with ProcessPoolExecutor() as executor:
+            futures = [
+                executor.submit(analyze, user_id) for user_id in unprocessed_users
+            ]
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                    with open(result_file, "a") as f:
+                        f.write(json.dumps(result, ensure_ascii=False) + "\n")
+                    pbar.update(1)
+                except Exception as e:
+                    tqdm.write(str(e))
