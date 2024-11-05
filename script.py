@@ -23,7 +23,7 @@ def analyze(user_id):
     df.sort_values(by=["card_id", "review_th"], inplace=True)
     df["state"] = df["state"].map(lambda x: x if x != New else Learning)
     df["delta_t"] = df["elapsed_days"].map(lambda x: max(0, x))
-    df["real_days"] = df.groupby("card_id")["delta_t"].cumsum().reset_index(drop=True)
+    df["real_days"] = df.groupby("card_id")["delta_t"].cumsum()
     df["i"] = df.groupby("card_id").cumcount() + 1
 
     def rating_counts(x):
