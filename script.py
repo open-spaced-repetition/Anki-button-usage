@@ -122,14 +122,19 @@ def analyze(user_id):
     return result
 
 
+def sort_jsonl(file):
+    data = list(map(lambda x: json.loads(x), open(file).readlines()))
+    data.sort(key=lambda x: x["user"])
+    with file.open("w", encoding="utf-8") as jsonl_file:
+        for json_data in data:
+            jsonl_file.write(json.dumps(json_data, ensure_ascii=False) + "\n")
+    return data
+
+
 if __name__ == "__main__":
     result_file = Path(f"button_usage.jsonl")
     if result_file.exists():
-        data = list(map(lambda x: json.loads(x), open(result_file).readlines()))
-        data.sort(key=lambda x: x["user"])
-        with result_file.open("w", encoding="utf-8") as jsonl_file:
-            for json_data in data:
-                jsonl_file.write(json.dumps(json_data, ensure_ascii=False) + "\n")
+        data = sort_jsonl(result_file)
         processed_user = set(map(lambda x: x["user"], data))
     else:
         processed_user = set()
@@ -156,3 +161,5 @@ if __name__ == "__main__":
                     pbar.update(1)
                 except Exception as e:
                     tqdm.write(str(e))
+
+    sort_jsonl(result_file)
