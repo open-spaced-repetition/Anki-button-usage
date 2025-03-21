@@ -6,6 +6,7 @@ from pathlib import Path
 import warnings
 import pyarrow.parquet as pq  # type: ignore
 from tqdm import tqdm  # type: ignore
+from markov_chain import FirstOrderMarkovChain
 
 warnings.filterwarnings("ignore")
 
@@ -46,7 +47,7 @@ def analyze(user_id):
         .agg(
             {
                 "state": "first",
-                "rating": ["first", rating_counts, next_rating],
+                "rating": ["first", rating_counts, next_rating, list],
                 "duration": "sum",
                 "i": "size",
             }
@@ -60,11 +61,26 @@ def analyze(user_id):
         "first_rating",
         "rating_counts",
         "next_rating",
+        "same_day_ratings",
         "sum_duration",
         "review_count",
     ]
     rating_counts_df = df["rating_counts"].apply(pd.Series).fillna(0).astype(int)
     df = pd.concat([df.drop("rating_counts", axis=1), rating_counts_df], axis=1)
+
+    model = FirstOrderMarkovChain()
+    learning_step_rating_sequences = df[df["first_state"] == Learning][
+        "same_day_ratings"
+    ]
+    learning_step_transition = model.fit(
+        learning_step_rating_sequences
+    ).transition_counts[:3]
+    relearning_step_rating_sequences = df[
+        (df["first_state"] == Review) & (df["first_rating"] == 1)
+    ]["same_day_ratings"]
+    relearing_step_transition = model.fit(
+        relearning_step_rating_sequences
+    ).transition_counts[:3]
 
     cost_dict = (
         df.groupby(by=["first_state", "first_rating"])["sum_duration"]
@@ -118,6 +134,8 @@ def analyze(user_id):
         "forget_rating_offset": round(forget_rating_offset, 2),
         "forget_session_len": round(forget_session_len, 2),
         "short_term_recall": short_term_recall.round(4).tolist(),
+        "learning_step_transition": learning_step_transition.astype(int).tolist(),
+        "relearning_step_transition": relearing_step_transition.astype(int).tolist(),
     }
     return result
 
