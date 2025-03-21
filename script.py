@@ -26,6 +26,7 @@ def analyze(user_id):
     df["delta_t"] = df["elapsed_days"].map(lambda x: max(0, x))
     df["real_days"] = df.groupby("card_id")["delta_t"].cumsum()
     df["i"] = df.groupby("card_id").cumcount() + 1
+    df = df[(df["duration"] > 0) & (df["duration"] < 1200000)]
 
     def rating_counts(x):
         tmp = x.value_counts().to_dict()
@@ -41,9 +42,12 @@ def analyze(user_id):
             return x.iloc[1]
         return 0
 
+    state_rating_costs = (
+        df.groupby(by=["state", "rating"]).agg({"duration": "mean"})
+    ).pivot_table(index="state", columns="rating", values="duration").fillna(0) / 1000
+
     df = (
-        df[(df["duration"] > 0) & (df["duration"] < 1200000)]
-        .groupby(by=["card_id", "real_days"])
+        df.groupby(by=["card_id", "real_days"])
         .agg(
             {
                 "state": "first",
@@ -136,6 +140,7 @@ def analyze(user_id):
         "short_term_recall": short_term_recall.round(4).tolist(),
         "learning_step_transition": learning_step_transition.astype(int).tolist(),
         "relearning_step_transition": relearing_step_transition.astype(int).tolist(),
+        "state_rating_costs": state_rating_costs.values.round(2).tolist(),
     }
     return result
 
