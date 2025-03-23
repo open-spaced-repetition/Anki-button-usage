@@ -14,6 +14,7 @@ New = 0
 Learning = 1
 Review = 2
 Relearning = 3
+Filtered = 4
 
 DATA_PATH = "../anki-revlogs-10k/revlogs"
 
@@ -43,8 +44,21 @@ def analyze(user_id):
         return 0
 
     state_rating_costs = (
-        df.groupby(by=["state", "rating"]).agg({"duration": "mean"})
-    ).pivot_table(index="state", columns="rating", values="duration").fillna(0) / 1000
+        df[df["state"] != Filtered]
+        .groupby(["state", "rating"])["duration"]
+        .mean()
+        .unstack(fill_value=0)
+    ) / 1000
+
+    # Ensure all ratings (1-4) exist in columns
+    for rating in range(1, 5):
+        if rating not in state_rating_costs.columns:
+            state_rating_costs[rating] = 0
+
+    # Ensure all states exist in index
+    for state in [Learning, Review, Relearning]:
+        if state not in state_rating_costs.index:
+            state_rating_costs.loc[state] = 0
 
     df = (
         df.groupby(by=["card_id", "real_days"])
