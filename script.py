@@ -46,7 +46,7 @@ def analyze(user_id):
     state_rating_costs = (
         df[df["state"] != Filtered]
         .groupby(["state", "rating"])["duration"]
-        .mean()
+        .median()
         .unstack(fill_value=0)
     ) / 1000
 
