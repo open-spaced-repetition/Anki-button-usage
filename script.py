@@ -96,7 +96,7 @@ def analyze(user_id):
     relearning_step_rating_sequences = df[
         (df["first_state"] == Review) & (df["first_rating"] == 1)
     ]["same_day_ratings"]
-    relearing_step_transition = model.fit(
+    relearning_step_transition = model.fit(
         relearning_step_rating_sequences
     ).transition_counts[:3]
 
@@ -153,7 +153,7 @@ def analyze(user_id):
         "forget_session_len": round(forget_session_len, 2),
         "short_term_recall": short_term_recall.round(4).tolist(),
         "learning_step_transition": learning_step_transition.astype(int).tolist(),
-        "relearning_step_transition": relearing_step_transition.astype(int).tolist(),
+        "relearning_step_transition": relearning_step_transition.astype(int).tolist(),
         "state_rating_costs": state_rating_costs.values.round(2).tolist(),
     }
     return result
