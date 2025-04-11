@@ -28,6 +28,8 @@ def analyze(user_id):
     df["real_days"] = df.groupby("card_id")["delta_t"].cumsum()
     df["i"] = df.groupby("card_id").cumcount() + 1
     df = df[(df["duration"] > 0) & (df["duration"] < 1200000)]
+    df["y"] = df["rating"].map(lambda x: 1 if x > 1 else 0)
+    true_retention = df["y"].mean()
 
     def rating_counts(x):
         tmp = x.value_counts().to_dict()
@@ -155,6 +157,7 @@ def analyze(user_id):
         "learning_step_transition": learning_step_transition.astype(int).tolist(),
         "relearning_step_transition": relearning_step_transition.astype(int).tolist(),
         "state_rating_costs": state_rating_costs.values.round(2).tolist(),
+        "true_retention": round(true_retention, 3),
     }
     return result
 
