@@ -48,7 +48,7 @@ def analyze(user_id):
     state_rating_costs = (
         df[df["state"] != Filtered]
         .groupby(["state", "rating"])["duration"]
-        .median()
+        .mean()
         .unstack(fill_value=0)
     ) / 1000
 
@@ -104,7 +104,7 @@ def analyze(user_id):
 
     cost_dict = (
         df.groupby(by=["first_state", "first_rating"])["sum_duration"]
-        .median()
+        .mean()
         .to_dict()
     )
     learn_costs = np.array([cost_dict.get((1, i), 0) / 1000 for i in range(1, 5)])
