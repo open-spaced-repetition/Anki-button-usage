@@ -102,10 +102,15 @@ def analyze(user_id):
         relearning_step_rating_sequences
     ).transition_counts[:3]
 
+    long_term_rating_sequences = (
+        df[df["first_state"] == Review]
+        .groupby(by=["card_id"])["first_rating"]
+        .apply(list)
+    )
+    long_term_transition = model.fit(long_term_rating_sequences).transition_counts
+
     cost_dict = (
-        df.groupby(by=["first_state", "first_rating"])["sum_duration"]
-        .mean()
-        .to_dict()
+        df.groupby(by=["first_state", "first_rating"])["sum_duration"].mean().to_dict()
     )
     learn_costs = np.array([cost_dict.get((1, i), 0) / 1000 for i in range(1, 5)])
     review_costs = np.array([cost_dict.get((2, i), 0) / 1000 for i in range(1, 5)])
@@ -156,6 +161,7 @@ def analyze(user_id):
         "short_term_recall": short_term_recall.round(4).tolist(),
         "learning_step_transition": learning_step_transition.astype(int).tolist(),
         "relearning_step_transition": relearning_step_transition.astype(int).tolist(),
+        "long_term_transition": long_term_transition.astype(int).tolist(),
         "state_rating_costs": state_rating_costs.values.round(2).tolist(),
         "true_retention": round(true_retention, 3),
     }
