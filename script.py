@@ -28,8 +28,6 @@ def analyze(user_id):
     df["real_days"] = df.groupby("card_id")["delta_t"].cumsum()
     df["i"] = df.groupby("card_id").cumcount() + 1
     df = df[(df["duration"] > 0) & (df["duration"] < 1200000)]
-    df["y"] = df["rating"].map(lambda x: 1 if x > 1 else 0)
-    true_retention = df["y"].mean()
 
     def rating_counts(x):
         tmp = x.value_counts().to_dict()
@@ -85,6 +83,8 @@ def analyze(user_id):
         "sum_duration",
         "review_count",
     ]
+    df["y"] = df["first_rating"].map(lambda x: 1 if x > 1 else 0)
+    true_retention = df["y"].mean()
     rating_counts_df = df["rating_counts"].apply(pd.Series).fillna(0).astype(int)
     df = pd.concat([df.drop("rating_counts", axis=1), rating_counts_df], axis=1)
 
@@ -149,7 +149,8 @@ def analyze(user_id):
     )
     result = {
         "user": user_id,
-        "size": df.shape[0],
+        "review_cnt": df["review_count"].sum().item(),
+        "card_cnt": df["card_id"].nunique(),
         "first_rating_prob": first_rating_prob.round(4).tolist(),
         "review_rating_prob": review_rating_prob.round(4).tolist(),
         "learn_costs": learn_costs.round(2).tolist(),
@@ -195,7 +196,7 @@ if __name__ == "__main__":
     unprocessed_users.sort()
 
     with tqdm(total=len(unprocessed_users), position=0, leave=True) as pbar:
-        with ProcessPoolExecutor() as executor:
+        with ProcessPoolExecutor(max_workers=4) as executor:
             futures = [
                 executor.submit(analyze, user_id) for user_id in unprocessed_users
             ]
