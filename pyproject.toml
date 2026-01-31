@@ -1,0 +1,14 @@
+[project]
+name = "anki-button-usage"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "colorama==0.4.6",
+    "numpy==2.4.1",
+    "pandas==3.0.0",
+    "pyarrow==23.0.0",
+    "python-dateutil==2.9.0.post0",
+    "six==1.17.0",
+    "tqdm==4.67.2",
+    "tzdata==2025.3",
+]
