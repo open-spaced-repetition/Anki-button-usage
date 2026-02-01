@@ -1,4 +1,5 @@
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import os
 import pandas as pd
 import numpy as np
 import json
@@ -198,6 +199,17 @@ def analyze(user_id):
     return result
 
 
+def analyze_batch(user_ids):
+    results = []
+    errors = []
+    for user_id in user_ids:
+        try:
+            results.append(analyze(user_id))
+        except Exception as e:
+            errors.append((user_id, str(e)))
+    return results, errors
+
+
 def sort_jsonl(file):
     data = list(map(lambda x: json.loads(x), open(file).readlines()))
     data.sort(key=lambda x: x["user"])
@@ -224,18 +236,28 @@ if __name__ == "__main__":
 
     unprocessed_users.sort()
 
+    max_workers = int(os.getenv("MAX_WORKERS", os.cpu_count() or 4))
+    chunksize = int(os.getenv("CHUNKSIZE", 32))
+    batches = [
+        unprocessed_users[i : i + chunksize]
+        for i in range(0, len(unprocessed_users), chunksize)
+    ]
     with tqdm(total=len(unprocessed_users), position=0, leave=True) as pbar:
-        with ProcessPoolExecutor(max_workers=4) as executor:
-            futures = [
-                executor.submit(analyze, user_id) for user_id in unprocessed_users
-            ]
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                    with open(result_file, "a") as f:
-                        f.write(json.dumps(result, ensure_ascii=False) + "\n")
-                    pbar.update(1)
-                except Exception as e:
-                    tqdm.write(str(e))
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(analyze_batch, batch): len(batch) for batch in batches
+            }
+            with open(result_file, "a") as f:
+                for future in as_completed(futures):
+                    batch_len = futures[future]
+                    try:
+                        results, errors = future.result()
+                        for result in results:
+                            f.write(json.dumps(result, ensure_ascii=False) + "\n")
+                        for user_id, err in errors:
+                            tqdm.write(f"{user_id}: {err}")
+                    except Exception as e:
+                        tqdm.write(str(e))
+                    pbar.update(batch_len)
 
     sort_jsonl(result_file)
