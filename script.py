@@ -1,5 +1,7 @@
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing as mp
 import os
+import threading
 import pandas as pd
 import numpy as np
 import json
@@ -199,7 +201,7 @@ def analyze(user_id):
     return result
 
 
-def analyze_batch(user_ids):
+def analyze_batch(user_ids, progress_q=None):
     results = []
     errors = []
     for user_id in user_ids:
@@ -207,6 +209,9 @@ def analyze_batch(user_ids):
             results.append(analyze(user_id))
         except Exception as e:
             errors.append((user_id, str(e)))
+        finally:
+            if progress_q is not None:
+                progress_q.put(1)
     return results, errors
 
 
@@ -242,22 +247,42 @@ if __name__ == "__main__":
         unprocessed_users[i : i + chunksize]
         for i in range(0, len(unprocessed_users), chunksize)
     ]
-    with tqdm(total=len(unprocessed_users), position=0, leave=True) as pbar:
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(analyze_batch, batch): len(batch) for batch in batches
-            }
-            with open(result_file, "a") as f:
-                for future in as_completed(futures):
-                    batch_len = futures[future]
+    total_users = len(unprocessed_users)
+
+    with tqdm(total=total_users, position=0, leave=True) as pbar:
+        with mp.Manager() as manager:
+            progress_q = manager.Queue()
+
+            def monitor_progress():
+                processed = 0
+                while processed < total_users:
                     try:
-                        results, errors = future.result()
-                        for result in results:
-                            f.write(json.dumps(result, ensure_ascii=False) + "\n")
-                        for user_id, err in errors:
-                            tqdm.write(f"{user_id}: {err}")
-                    except Exception as e:
-                        tqdm.write(str(e))
-                    pbar.update(batch_len)
+                        inc = progress_q.get()
+                    except Exception:
+                        break
+                    if inc:
+                        processed += inc
+                        pbar.update(inc)
+
+            monitor = threading.Thread(target=monitor_progress, daemon=True)
+            monitor.start()
+
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(analyze_batch, batch, progress_q)
+                    for batch in batches
+                ]
+                with open(result_file, "a") as f:
+                    for future in as_completed(futures):
+                        try:
+                            results, errors = future.result()
+                            for result in results:
+                                f.write(json.dumps(result, ensure_ascii=False) + "\n")
+                            for user_id, err in errors:
+                                tqdm.write(f"{user_id}: {err}")
+                        except Exception as e:
+                            tqdm.write(str(e))
+
+            monitor.join()
 
     sort_jsonl(result_file)
