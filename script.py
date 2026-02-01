@@ -20,31 +20,20 @@ DATA_PATH = "../anki-revlogs-10k/revlogs"
 
 
 def analyze(user_id):
-    df = pd.read_parquet(DATA_PATH, filters=[("user_id", "=", user_id)])
-    df["review_th"] = range(1, df.shape[0] + 1)
-    df.sort_values(by=["card_id", "review_th"], inplace=True)
-    df["state"] = df["state"].map(lambda x: x if x != New else Learning)
-    df["delta_t"] = df["elapsed_days"].map(lambda x: max(0, x))
-    df["real_days"] = df.groupby("card_id")["delta_t"].cumsum()
-    df["i"] = df.groupby("card_id").cumcount() + 1
-    df = df[(df["duration"] > 0) & (df["duration"] < 1200000)]
-
-    def rating_counts(x):
-        tmp = x.value_counts().to_dict()
-        first = x.iloc[0]
-        tmp[first] -= 1
-        for i in range(1, 5):
-            if i not in tmp:
-                tmp[i] = 0
-        return tmp
-
-    def next_rating(x):
-        if x.shape[0] > 1:
-            return x.iloc[1]
-        return 0
+    df_raw = pd.read_parquet(
+        DATA_PATH,
+        filters=[("user_id", "=", user_id)],
+        columns=["card_id", "state", "elapsed_days", "duration", "rating"],
+    )
+    df_raw["review_th"] = np.arange(1, df_raw.shape[0] + 1)
+    df_raw.sort_values(by=["card_id", "review_th"], inplace=True)
+    df_raw["state"] = df_raw["state"].replace({New: Learning})
+    df_raw["delta_t"] = df_raw["elapsed_days"].clip(lower=0)
+    df_raw["real_days"] = df_raw.groupby("card_id", sort=False)["delta_t"].cumsum()
+    df_raw = df_raw[(df_raw["duration"] > 0) & (df_raw["duration"] < 1200000)]
 
     state_rating_costs = (
-        df[df["state"] != Filtered]
+        df_raw[df_raw["state"] != Filtered]
         .groupby(["state", "rating"])["duration"]
         .mean()
         .unstack(fill_value=0)
@@ -60,33 +49,52 @@ def analyze(user_id):
         if state not in state_rating_costs.index:
             state_rating_costs.loc[state] = 0
 
-    df = (
-        df.groupby(by=["card_id", "real_days"])
-        .agg(
-            {
-                "state": "first",
-                "rating": ["first", rating_counts, next_rating, list],
-                "duration": "sum",
-                "i": "size",
-            }
-        )
-        .reset_index()
+    group_keys = ["card_id", "real_days"]
+    g = df_raw.groupby(group_keys, sort=False)
+
+    first_state = g["state"].first()
+    first_rating = g["rating"].first()
+    sum_duration = g["duration"].sum()
+    review_count = g.size()
+    second = g["rating"].nth(1)
+    if not second.empty:
+        second_keys = df_raw.loc[second.index, group_keys]
+        second_index = pd.MultiIndex.from_frame(second_keys)
+        second = pd.Series(second.to_numpy(), index=second_index)
+    next_rating = second.reindex(first_state.index).fillna(0).astype(int)
+    same_day_ratings = g["rating"].agg(list).reindex(first_state.index)
+
+    rating_counts = (
+        df_raw.groupby(group_keys + ["rating"], sort=False)
+        .size()
+        .unstack(fill_value=0)
+        .reindex(columns=[1, 2, 3, 4], fill_value=0)
     )
-    df.columns = [
-        "card_id",
-        "real_days",
-        "first_state",
-        "first_rating",
-        "rating_counts",
-        "next_rating",
-        "same_day_ratings",
-        "sum_duration",
-        "review_count",
-    ]
-    df["y"] = df["first_rating"].map(lambda x: 1 if x > 1 else 0)
+    rating_counts = rating_counts.reindex(first_rating.index)
+    rating_counts_values = rating_counts.to_numpy(copy=True)
+    first_rating_values = first_rating.to_numpy()
+    row_idx = np.arange(rating_counts_values.shape[0])
+    col_idx = first_rating_values - 1
+    valid_mask = (col_idx >= 0) & (col_idx < rating_counts_values.shape[1])
+    rating_counts_values[row_idx[valid_mask], col_idx[valid_mask]] -= 1
+    rating_counts = pd.DataFrame(
+        rating_counts_values, index=rating_counts.index, columns=rating_counts.columns
+    )
+
+    df = pd.DataFrame(
+        {
+            "first_state": first_state.to_numpy(),
+            "first_rating": first_rating.to_numpy(),
+            "next_rating": next_rating.to_numpy(),
+            "same_day_ratings": same_day_ratings.to_numpy(),
+            "sum_duration": sum_duration.to_numpy(),
+            "review_count": review_count.to_numpy(),
+        },
+        index=first_state.index,
+    )
+    df = df.join(rating_counts, how="left").reset_index()
+    df["y"] = (df["first_rating"] > 1).astype(int)
     true_retention = df["y"].mean()
-    rating_counts_df = df["rating_counts"].apply(pd.Series).fillna(0).astype(int)
-    df = pd.concat([df.drop("rating_counts", axis=1), rating_counts_df], axis=1)
 
     model = FirstOrderMarkovChain()
     learning_step_rating_sequences = df[df["first_state"] == Learning][
