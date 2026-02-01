@@ -122,6 +122,25 @@ def analyze(user_id):
     first_rating_prob = learn_buttons / learn_buttons.sum()
     review_rating_prob = review_buttons / review_buttons.sum()
 
+    rating_cols_no_again = [2, 3, 4]
+    learning_counts = df[df["first_state"] == Learning][rating_cols_no_again].sum()
+    learning_total = learning_counts.sum()
+    learning_rating_prob = (
+        (learning_counts / learning_total).reindex(rating_cols_no_again).to_numpy()
+        if learning_total > 0
+        else np.array([np.nan, np.nan, np.nan])
+    )
+
+    relearning_counts = df[
+        (df["first_state"] == Review) & (df["first_rating"] == 1)
+    ][rating_cols_no_again].sum()
+    relearning_total = relearning_counts.sum()
+    relearning_rating_prob = (
+        (relearning_counts / relearning_total).reindex(rating_cols_no_again).to_numpy()
+        if relearning_total > 0
+        else np.array([np.nan, np.nan, np.nan])
+    )
+
     df2 = df.groupby(by=["first_state", "first_rating"])[[1, 2, 3, 4]].mean().round(2)
     rating_offset_dict = sum([df2[g] * (g - 3) for g in range(1, 5)]).to_dict()
     session_len_dict = sum([df2[g] for g in range(1, 5)]).to_dict()
@@ -153,6 +172,8 @@ def analyze(user_id):
         "card_cnt": df["card_id"].nunique(),
         "first_rating_prob": first_rating_prob.round(4).tolist(),
         "review_rating_prob": review_rating_prob.round(4).tolist(),
+        "learning_rating_prob": learning_rating_prob.round(4).tolist(),
+        "relearning_rating_prob": relearning_rating_prob.round(4).tolist(),
         "learn_costs": learn_costs.round(2).tolist(),
         "review_costs": review_costs.round(2).tolist(),
         "first_rating_offset": first_rating_offset.round(2).tolist(),
