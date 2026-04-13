@@ -1,4 +1,5 @@
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import argparse
 import multiprocessing as mp
 import os
 import threading
@@ -20,14 +21,113 @@ Relearning = 3
 Filtered = 4
 
 DATA_PATH = "../anki-revlogs-10k/revlogs"
+NO_SAME_DAY = True
+ORDER_CANDIDATES = (
+    "review_th",
+    "review_time",
+    "review_time_ms",
+    "review_timestamp",
+    "review_ts",
+    "review_datetime",
+    "timestamp",
+    "id",
+)
+
+
+def detect_order_column(data_path: str) -> str | None:
+    try:
+        dataset = pq.ParquetDataset(data_path)
+    except Exception:
+        return None
+    columns = dataset.schema.names
+    for column in ORDER_CANDIDATES:
+        if column in columns:
+            return column
+    return None
+
+
+ORDER_COL = detect_order_column(DATA_PATH)
+
+
+def compute_lag_stats(df: pd.DataFrame) -> dict[str, float]:
+    if df.empty:
+        return {
+            "lag_review_cnt": 0,
+            "lag_prev_success": np.nan,
+            "lag_prev_fail": np.nan,
+            "lag_acf_1": np.nan,
+            "lag_acf_10": np.nan,
+            "lag_prev_success_sum": 0.0,
+            "lag_prev_success_cnt": 0,
+            "lag_prev_fail_sum": 0.0,
+            "lag_prev_fail_cnt": 0,
+        }
+
+    df_lag = df
+    if NO_SAME_DAY and "elapsed_days" in df_lag.columns:
+        df_lag = df_lag[df_lag["elapsed_days"] > 0]
+    df_lag = df_lag[(df_lag["duration"] > 0) & (df_lag["duration"] < 1200000)]
+
+    if ORDER_COL is not None and ORDER_COL in df_lag.columns:
+        df_lag = df_lag.sort_values(by=ORDER_COL)
+
+    y = (df_lag["rating"] > 1).to_numpy(dtype=float)
+    if len(y) < 2:
+        return {
+            "lag_review_cnt": int(len(y)),
+            "lag_prev_success": np.nan,
+            "lag_prev_fail": np.nan,
+            "lag_acf_1": np.nan,
+            "lag_acf_10": np.nan,
+            "lag_prev_success_sum": 0.0,
+            "lag_prev_success_cnt": 0,
+            "lag_prev_fail_sum": 0.0,
+            "lag_prev_fail_cnt": 0,
+        }
+
+    prev = y[:-1]
+    nxt = y[1:]
+    prev_success_mask = prev == 1
+    prev_fail_mask = prev == 0
+    prev_success = (
+        float(nxt[prev_success_mask].mean()) if np.any(prev_success_mask) else np.nan
+    )
+    prev_fail = (
+        float(nxt[prev_fail_mask].mean()) if np.any(prev_fail_mask) else np.nan
+    )
+    acf_1 = float(np.corrcoef(y[:-1], y[1:])[0, 1])
+    acf_10 = (
+        float(np.corrcoef(y[:-10], y[10:])[0, 1]) if len(y) > 10 else np.nan
+    )
+    return {
+        "lag_review_cnt": int(len(y)),
+        "lag_prev_success": prev_success,
+        "lag_prev_fail": prev_fail,
+        "lag_acf_1": acf_1,
+        "lag_acf_10": acf_10,
+        "lag_prev_success_sum": float(nxt[prev_success_mask].sum()),
+        "lag_prev_success_cnt": int(prev_success_mask.sum()),
+        "lag_prev_fail_sum": float(nxt[prev_fail_mask].sum()),
+        "lag_prev_fail_cnt": int(prev_fail_mask.sum()),
+    }
+
+
+def safe_round(value: float, digits: int) -> float:
+    if value is None or np.isnan(value):
+        return np.nan
+    return round(float(value), digits)
 
 
 def analyze(user_id):
+    columns = ["card_id", "state", "elapsed_days", "duration", "rating"]
+    if ORDER_COL is not None and ORDER_COL not in columns:
+        columns.append(ORDER_COL)
     df_raw = pd.read_parquet(
         DATA_PATH,
         filters=[("user_id", "=", user_id)],
-        columns=["card_id", "state", "elapsed_days", "duration", "rating"],
+        columns=columns,
     )
+    lag_stats = compute_lag_stats(df_raw)
     df_raw["review_th"] = np.arange(1, df_raw.shape[0] + 1)
     df_raw.sort_values(by=["card_id", "review_th"], inplace=True)
     df_raw["state"] = df_raw["state"].replace({New: Learning})
@@ -197,6 +297,15 @@ def analyze(user_id):
         "long_term_transition": long_term_transition.astype(int).tolist(),
         "state_rating_costs": state_rating_costs.values.round(2).tolist(),
         "true_retention": round(true_retention, 3),
+        "lag_review_cnt": lag_stats["lag_review_cnt"],
+        "lag_prev_success": safe_round(lag_stats["lag_prev_success"], 4),
+        "lag_prev_fail": safe_round(lag_stats["lag_prev_fail"], 4),
+        "lag_acf_1": safe_round(lag_stats["lag_acf_1"], 4),
+        "lag_acf_10": safe_round(lag_stats["lag_acf_10"], 4),
+        "lag_prev_success_sum": lag_stats["lag_prev_success_sum"],
+        "lag_prev_success_cnt": lag_stats["lag_prev_success_cnt"],
+        "lag_prev_fail_sum": lag_stats["lag_prev_fail_sum"],
+        "lag_prev_fail_cnt": lag_stats["lag_prev_fail_cnt"],
     }
     return result
 
@@ -225,6 +334,28 @@ def sort_jsonl(file):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--include-same-day",
+        action="store_true",
+        help="include reviews with elapsed_days == 0 in lag statistics",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=(os.cpu_count() or 4),
+        help="number of worker processes (default: CPU count)",
+    )
+    parser.add_argument(
+        "--chunksize",
+        type=int,
+        default=32,
+        help="batch size per worker (default: 32)",
+    )
+    args = parser.parse_args()
+
+    NO_SAME_DAY = not args.include_same_day
+
     result_file = Path(f"button_usage.jsonl")
     if result_file.exists():
         data = sort_jsonl(result_file)
@@ -241,8 +372,8 @@ if __name__ == "__main__":
 
     unprocessed_users.sort()
 
-    max_workers = int(os.getenv("MAX_WORKERS", os.cpu_count() or 4))
-    chunksize = int(os.getenv("CHUNKSIZE", 32))
+    max_workers = int(args.max_workers)
+    chunksize = int(args.chunksize)
     batches = [
         unprocessed_users[i : i + chunksize]
         for i in range(0, len(unprocessed_users), chunksize)
