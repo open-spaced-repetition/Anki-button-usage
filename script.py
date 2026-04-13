@@ -92,13 +92,9 @@ def compute_lag_stats(df: pd.DataFrame) -> dict[str, float]:
     prev_success = (
         float(nxt[prev_success_mask].mean()) if np.any(prev_success_mask) else np.nan
     )
-    prev_fail = (
-        float(nxt[prev_fail_mask].mean()) if np.any(prev_fail_mask) else np.nan
-    )
+    prev_fail = float(nxt[prev_fail_mask].mean()) if np.any(prev_fail_mask) else np.nan
     acf_1 = float(np.corrcoef(y[:-1], y[1:])[0, 1])
-    acf_10 = (
-        float(np.corrcoef(y[:-10], y[10:])[0, 1]) if len(y) > 10 else np.nan
-    )
+    acf_10 = float(np.corrcoef(y[:-10], y[10:])[0, 1]) if len(y) > 10 else np.nan
     return {
         "lag_review_cnt": int(len(y)),
         "lag_prev_success": prev_success,
@@ -242,9 +238,9 @@ def analyze(user_id):
         else np.array([np.nan, np.nan, np.nan])
     )
 
-    relearning_counts = df[
-        (df["first_state"] == Review) & (df["first_rating"] == 1)
-    ][rating_cols_no_again].sum()
+    relearning_counts = df[(df["first_state"] == Review) & (df["first_rating"] == 1)][
+        rating_cols_no_again
+    ].sum()
     relearning_total = relearning_counts.sum()
     relearning_rating_prob = (
         (relearning_counts / relearning_total).reindex(rating_cols_no_again).to_numpy()

@@ -124,16 +124,19 @@ class FirstOrderMarkovChain:
         """Print model parameters"""
         print("Initial state distribution:")
         for i in range(self.n_states):
-            print(f"State {i+1}: {self.initial_distribution[i]:.4f}")
+            print(f"State {i + 1}: {self.initial_distribution[i]:.4f}")
 
         print("\nTransition probability matrix:")
-        print("    | " + " ".join([f"  {i+1}  " for i in range(self.n_states)]))
+        print("    | " + " ".join([f"  {i + 1}  " for i in range(self.n_states)]))
         print("----+" + "------" * self.n_states)
         for i in range(self.n_states):
             print(
-                f" {i+1}  | "
+                f" {i + 1}  | "
                 + " ".join(
-                    [f"{self.transition_matrix[i,j]:.4f}" for j in range(self.n_states)]
+                    [
+                        f"{self.transition_matrix[i, j]:.4f}"
+                        for j in range(self.n_states)
+                    ]
                 )
             )
 
