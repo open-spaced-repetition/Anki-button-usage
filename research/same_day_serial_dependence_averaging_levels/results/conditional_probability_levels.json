@@ -1,0 +1,137 @@
+{
+  "metadata": {
+    "data_root": "/home/jarrett/open-spaced-repetition/anki-revlogs-10k",
+    "review_order_column": null,
+    "requested_user_count": 10000,
+    "sequence_notes": {
+      "raw_long_term": [
+        "retain ratings in {1, 2, 3, 4} only",
+        "valid duration only",
+        "adjacent pairs are formed inside the elapsed_days > 0 subsequence",
+        "when no explicit order column exists, adjacency follows stored parquet row order",
+        "pair day is assigned from the current event"
+      ],
+      "same_day_first_of_day_review": [
+        "retain ratings in {1, 2, 3, 4} only",
+        "valid duration only",
+        "keep the first stored-order occurrence of each card within each day",
+        "restrict to state == Review",
+        "keep same-day adjacent pairs inside the state == Review subsequence",
+        "within a day, each pair is between two different cards by construction"
+      ]
+    },
+    "averaging_notes": [
+      "pooled weights every qualifying pair equally",
+      "equal_user_mean weights every user equally after computing that user's conditional probability",
+      "equal_user_day_mean weights every user-day equally after computing that user-day's conditional probability",
+      "equal_user_day_mean does not give every user equal total weight; users with more retained days contribute more user-day units",
+      "for mean levels, the prev-success and prev-fail averages are computed over the units where each conditional is defined",
+      "common_support_gap averages the unit-level gap only over units where both conditionals are defined",
+      "pooled_on_common_support_user_days and equal_user_mean_on_common_support_user_days first restrict to user-days where both contexts appear, then re-aggregate pairs or users on that restricted subset"
+    ]
+  },
+  "sequences": {
+    "raw_long_term": {
+      "pooled": {
+        "p_success_given_prev_success": 0.895908,
+        "p_success_given_prev_fail": 0.651259,
+        "gap": 0.244649,
+        "pair_count": 442749951,
+        "user_count": 10000,
+        "user_day_count": 4132006
+      },
+      "equal_user_mean": {
+        "p_success_given_prev_success": 0.88132,
+        "p_success_given_prev_fail": 0.674056,
+        "gap": 0.207264,
+        "common_support_gap": 0.206955,
+        "defined_prev_success_units": 10000,
+        "defined_prev_fail_units": 9974,
+        "both_defined_units": 9974,
+        "unit_count": 10000,
+        "pair_count": 442749951
+      },
+      "equal_user_day_mean": {
+        "p_success_given_prev_success": 0.864873,
+        "p_success_given_prev_fail": 0.789761,
+        "gap": 0.075112,
+        "common_support_gap": 0.029955,
+        "defined_prev_success_units": 4093637,
+        "defined_prev_fail_units": 3105907,
+        "both_defined_units": 3067538,
+        "unit_count": 4132006,
+        "pair_count": 442749951
+      },
+      "pooled_on_common_support_user_days": {
+        "p_success_given_prev_success": 0.880828,
+        "p_success_given_prev_fail": 0.654464,
+        "gap": 0.226364,
+        "pair_count": 393767450,
+        "user_count": 9973,
+        "user_day_count": 3067538
+      },
+      "equal_user_mean_on_common_support_user_days": {
+        "p_success_given_prev_success": 0.866073,
+        "p_success_given_prev_fail": 0.677363,
+        "gap": 0.18871,
+        "common_support_gap": 0.18871,
+        "defined_prev_success_units": 9973,
+        "defined_prev_fail_units": 9973,
+        "both_defined_units": 9973,
+        "unit_count": 9973,
+        "pair_count": 393767450
+      }
+    },
+    "same_day_first_of_day_review": {
+      "pooled": {
+        "p_success_given_prev_success": 0.898358,
+        "p_success_given_prev_fail": 0.680715,
+        "gap": 0.217643,
+        "pair_count": 375615926,
+        "user_count": 9987,
+        "user_day_count": 3722477
+      },
+      "equal_user_mean": {
+        "p_success_given_prev_success": 0.884342,
+        "p_success_given_prev_fail": 0.70436,
+        "gap": 0.179981,
+        "common_support_gap": 0.179427,
+        "defined_prev_success_units": 9987,
+        "defined_prev_fail_units": 9939,
+        "both_defined_units": 9939,
+        "unit_count": 9987,
+        "pair_count": 375615926
+      },
+      "equal_user_day_mean": {
+        "p_success_given_prev_success": 0.87678,
+        "p_success_given_prev_fail": 0.818717,
+        "gap": 0.058063,
+        "common_support_gap": 0.011314,
+        "defined_prev_success_units": 3691520,
+        "defined_prev_fail_units": 2746135,
+        "both_defined_units": 2715178,
+        "unit_count": 3722477,
+        "pair_count": 375615926
+      },
+      "pooled_on_common_support_user_days": {
+        "p_success_given_prev_success": 0.882378,
+        "p_success_given_prev_fail": 0.685349,
+        "gap": 0.197029,
+        "pair_count": 330565591,
+        "user_count": 9934,
+        "user_day_count": 2715178
+      },
+      "equal_user_mean_on_common_support_user_days": {
+        "p_success_given_prev_success": 0.86595,
+        "p_success_given_prev_fail": 0.712337,
+        "gap": 0.153613,
+        "common_support_gap": 0.153613,
+        "defined_prev_success_units": 9934,
+        "defined_prev_fail_units": 9934,
+        "both_defined_units": 9934,
+        "unit_count": 9934,
+        "pair_count": 330565591
+      }
+    }
+  }
+}
