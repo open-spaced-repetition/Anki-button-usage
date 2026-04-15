@@ -92,7 +92,7 @@ This is not the main scientific target, but it is useful for checking whether th
 
 ### 4.1 Main Target: `same_day_first_of_day_review`
 
-| Level | `P(success | prev success)` | `P(success | prev fail)` | Gap |
+| Level | `P(success \| prev success)` | `P(success \| prev fail)` | Gap |
 | --- | ---: | ---: | ---: |
 | `pooled` | `0.898358` | `0.680715` | `0.217643` |
 | `equal_user_mean` | `0.884342` | `0.704360` | `0.179981` |
@@ -131,7 +131,7 @@ Support:
 
 ### 4.2 Reference Target: `raw_long_term`
 
-| Level | `P(success | prev success)` | `P(success | prev fail)` | Gap |
+| Level | `P(success \| prev success)` | `P(success \| prev fail)` | Gap |
 | --- | ---: | ---: | ---: |
 | `pooled` | `0.895908` | `0.651259` | `0.244649` |
 | `equal_user_mean` | `0.881320` | `0.674056` | `0.207264` |
